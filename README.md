@@ -1,4 +1,4 @@
-## Educational database in Odin.
+## Educational database in C.
 
 
 
