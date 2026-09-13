@@ -22,8 +22,6 @@ Operators - >=, <=, =, <, >, !=, <>
 
 != and <> have the same meaning "not equal to".
 ```
-
-
 *CREATE*
 CREATE TABLE table (id INT PRIMARY KEY, name VARCHAR, did VARCHAR, dep VARCHAR, salary INT, city VARCHAR);
 
@@ -33,7 +31,7 @@ INSERT INTO table VALUES (2, 'Bob', '1010A-1001b', 'IT', 18500, 'LA');
 INSERT INTO table VALUES (3, 'Charlie', '2020B-2001a', 'HR', 4000, 'SF');
 INSERT INTO table VALUES (4, 'Diana', '2020B-2001b', 'Finance', 21000, 'LA');
 INSERT INTO table VALUES (5, 'Evan', '3030C-3001a', 'HR', 3500, 'SF');
-INSERT INTO table VALUES (6, 'Lex', '3030C-3001b', 'HR', 11000, 'NY');
+INSERT INTO table VALUES (6, 'Frank', '3030C-3001b', 'HR', 11000, 'NY');
 
 
 *SELECT*
@@ -74,8 +72,6 @@ ALTER TABLE <name> DROP [Column] <col>;
 ALTER TABLE <name> RENAME TO <new name>;
 ALTER TABLE <name> RENAME COLUMN <old> TO <new>;
 SELECT COUNT(*) FROM <name> WHERE <expr>
-
-
 
 
 gcc -Wall -Wextra db.c -o db
