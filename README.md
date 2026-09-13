@@ -68,7 +68,12 @@ DELETE FROM table WHERE (a = '' AND b = '') OR c <= '';
 DELETE FROM table WHERE a > '' AND (b = '' OR c = '');
 
 
-
+DROP TABLE <name>;
+ALTER TABLE <name> ADD [Column] <col> int|VARCHAR(n);
+ALTER TABLE <name> DROP [Column] <col>;
+ALTER TABLE <name> RENAME TO <new name>;
+ALTER TABLE <name> RENAME COLUMN <old> TO <new>;
+SELECT COUNT(*) FROM <name> WHERE <expr>
 
 
 
