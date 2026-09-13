@@ -78,7 +78,7 @@ SELECT COUNT(*) FROM <name> WHERE <expr>
 
 
 
-gcc -Wall -Wextra db.c -o prog
+gcc -Wall -Wextra db.c -o db
 
 \q - exit,\? - for help
 
