@@ -33,14 +33,14 @@ INSERT INTO emp VALUES (2, 'Bob', '1010A-1001b', 'IT', 18500, 'LA');
 INSERT INTO emp VALUES (3, 'Charlie', '2020B-2001a', 'HR', 4000, 'SF');
 INSERT INTO emp VALUES (4, 'Diana', '2020B-2001b', 'Finance', 21000, 'LA');
 INSERT INTO emp VALUES (5, 'Evan', '3030C-3001a', 'HR', 3500, 'SF');
-INSERT INTO emp VALUES (6, 'Frank', '3030C-3001b', 'HR', 11000, 'NY');
+INSERT INTO emp VALUES (6, 'Frank', '3030C-3001b', 'Sales', 11000, 'NY');
 
-INSERT INTO books VALUES (1, 'The Godfather', '978-0743273565', 'Drama', 15, 'Francis Ford Coppola');
-INSERT INTO books VALUES (2, 'Star Wars 4: A New Hope', '978-0061120084', 'Science Fiction', 18, 'George Lucas');
-INSERT INTO books VALUES (3, 'The Godfather 2', '978-0451524935', 'Drama', 12, 'Francis Ford Coppola');
-INSERT INTO books VALUES (4, 'Dune 2', '978-1449373320', 'Sci-Fi', 45, 'Denis Villeneuve');
-INSERT INTO books VALUES (5, 'Star Wars 6: Return of Jedi', '978-0132350884', 'Science Fiction', 40, 'George Lucas');
-INSERT INTO books VALUES (6, 'Dune', '978-0441172719', 'Sci-Fi', 22, 'Denis Villeneuve');
+INSERT INTO movies VALUES (1, 'The Godfather', '978-0743273565', 'Drama', 15, 'Francis Ford Coppola');
+INSERT INTO movies VALUES (2, 'Star Wars 4: A New Hope', '978-0061120084', 'Science Fiction', 18, 'George Lucas');
+INSERT INTO movies VALUES (3, 'The Godfather 2', '978-0451524935', 'Drama', 12, 'Francis Ford Coppola');
+INSERT INTO movies VALUES (4, 'Dune 2', '978-1449373320', 'Sci-Fi', 45, 'Denis Villeneuve');
+INSERT INTO movies VALUES (5, 'Star Wars 6: Return of Jedi', '978-0132350884', 'Science Fiction', 40, 'George Lucas');
+INSERT INTO movies VALUES (6, 'Dune', '978-0441172719', 'Sci-Fi', 22, 'Denis Villeneuve');
 
 
 
@@ -112,7 +112,7 @@ UPDATE emp SET did = 'XXX', city = 'Miami' WHERE id >= 5;
 (6, 'Frank', 'XXX', 'HR', 11000, 'Miami')
 
 UPDATE emp SET salary = 1 WHERE id <= 5 AND (city = 'LA' OR city = 'SF');
-(1, 'Alice', '1010A-1001a', 'Engineering', 1, 'SF')
+(1, 'Alice', '1010A-1001a', 'Engineering', 120000, 'NY')
 (2, 'Bob', '1010A-1001b', 'IT', 1, 'LA')
 (3, 'Charlie', '2020B-2001a', 'HR', 1, 'SF')
 (4, 'Diana', '2020B-2001b', 'Finance', 1, 'LA')
@@ -135,31 +135,35 @@ DELETE FROM table WHERE a > '' AND (b = '' OR c = '');
 
 DROP/ALTER TABLE
 DROP TABLE table;
-ALTER TABLE table ADD [Column] <col> int|VARCHAR(n);
 ALTER TABLE table DROP [Column] <col>;
+ALTER TABLE table ADD [Column] <col> int|VARCHAR(n);
 ALTER TABLE table RENAME TO <new name>;
 ALTER TABLE table RENAME COLUMN <old> TO <new>;
 
-dbv3.c
+
 SELECT * FROM table ORDER BY <col>; --ORDER BY uses ASC by default. works on VARCHAR too
 SELECT * FROM table ORDER BY <col> DESC; --ASC/DESC work without ORDER BY, but with ORDER BY is better.
-SELECT * FROM table ORDER BY <col>;  
+SELECT * FROM table ORDER BY <col> ASC;  
 
 
 *LIMIT/OFFSET* 
 Composable with ORDER BY, WHERE
+SELECT * FROM table ORDER BY id DESC; --returns rows in Descending order
+SELECT * FROM table ORDER BY id ASC; --return rows in Ascending order. ORDER BY uses ASC by default
+
+SELECT * FROM table LIMIT 2; --returns first 2 rows
 SELECT * FROM table ORDER BY id LIMIT 2; --returns first 2 rows
 SELECT * FROM table ORDER BY id OFFSET 2; --skips first 2 rows and returns next rows
 SELECT * FROM table ORDER BY id DESC LIMIT 2;
-SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2; --skips 1 row returns 2 next rows
+SELECT * FROM table ORDER BY id LIMIT 4 OFFSET 2; --skips first 2 rows returns 4 next rows
+SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2;
 
-SELECT COUNT(*) FROM table WHERE <expr>
+SELECT COUNT(*) FROM table;
+SELECT COUNT(*) FROM table WHERE <expr>; --SUM,MIN,MAX,AVG support WHERE expression.
 SELECT SUM(INT Column) FROM table;
-SELECT AVG(INT Column) FROM table WHERE <expr>
 SELECT MIN(INT Column) FROM table;
-SELECT MAX(INT Column) FROM table WHERE <expr>;
-
-
+SELECT MAX(INT Column) FROM table;
+SELECT AVG(INT Column) FROM table;
 
 gcc -Wall -Wextra db.c -o db
 
