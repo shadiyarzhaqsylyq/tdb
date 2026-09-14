@@ -23,15 +23,15 @@ Operators - >=, <=, =, <, >, !=, <>
 != and <> have the same meaning "not equal to".
 ```
 *CREATE*
-CREATE TABLE table (id INT PRIMARY KEY, name VARCHAR, did VARCHAR, dep VARCHAR, salary INT, city VARCHAR);
+CREATE TABLE emp (id INT PRIMARY KEY, name VARCHAR, did VARCHAR, dep VARCHAR, salary INT, city VARCHAR);
 
 *INSERT*
-INSERT INTO table VALUES (1, 'Alice', '1010A-1001a', 'Engineering', 12000, 'NY');
-INSERT INTO table VALUES (2, 'Bob', '1010A-1001b', 'IT', 18500, 'LA');
-INSERT INTO table VALUES (3, 'Charlie', '2020B-2001a', 'HR', 4000, 'SF');
-INSERT INTO table VALUES (4, 'Diana', '2020B-2001b', 'Finance', 21000, 'LA');
-INSERT INTO table VALUES (5, 'Evan', '3030C-3001a', 'HR', 3500, 'SF');
-INSERT INTO table VALUES (6, 'Frank', '3030C-3001b', 'HR', 11000, 'NY');
+INSERT INTO emp VALUES (1, 'Alice', '1010A-1001a', 'Engineering', 12000, 'NY');
+INSERT INTO emp VALUES (2, 'Bob', '1010A-1001b', 'IT', 18500, 'LA');
+INSERT INTO emp VALUES (3, 'Charlie', '2020B-2001a', 'HR', 4000, 'SF');
+INSERT INTO emp VALUES (4, 'Diana', '2020B-2001b', 'Finance', 21000, 'LA');
+INSERT INTO emp VALUES (5, 'Evan', '3030C-3001a', 'HR', 3500, 'SF');
+INSERT INTO emp VALUES (6, 'Frank', '3030C-3001b', 'HR', 11000, 'NY');
 
 
 *SELECT*
@@ -65,7 +65,7 @@ DELETE FROM table WHERE a = '' AND b = '';
 DELETE FROM table WHERE (a = '' AND b = '') OR c <= '';
 DELETE FROM table WHERE a > '' AND (b = '' OR c = '');
 
-
+dbv2.c
 DROP TABLE <name>;
 ALTER TABLE <name> ADD [Column] <col> int|VARCHAR(n);
 ALTER TABLE <name> DROP [Column] <col>;
@@ -73,6 +73,19 @@ ALTER TABLE <name> RENAME TO <new name>;
 ALTER TABLE <name> RENAME COLUMN <old> TO <new>;
 SELECT COUNT(*) FROM <name> WHERE <expr>
 
+dbv3.c
+SELECT * FROM emp ORDER BY salary;
+SELECT * FROM emp ORDER BY salary DESC;
+SELECT * FROM emp ORDER BY name;   -- works on VARCHAR too
+
+SELECT * FROM emp ORDER BY salary DESC LIMIT 2;
+SELECT * FROM emp ORDER BY salary DESC LIMIT 2 OFFSET 1;
+
+SELECT COUNT(*) FROM emp WHERE dept = 'eng';
+SELECT SUM(salary) FROM emp;
+SELECT AVG(salary) FROM emp WHERE dept = 'eng';
+SELECT MIN(salary) FROM emp;
+SELECT MAX(salary) FROM emp WHERE dept = 'sales';
 
 gcc -Wall -Wextra db.c -o db
 
