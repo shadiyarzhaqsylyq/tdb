@@ -24,7 +24,7 @@ Operators - >=, <=, =, <, >, !=, <>
 ```
 *CREATE*
 CREATE TABLE emp (id INT PRIMARY KEY, name VARCHAR, did VARCHAR, dep VARCHAR, salary INT, city VARCHAR);
-CREATE TABLE books (id INT PRIMARY KEY, title VARCHAR, isbn VARCHAR, genre VARCHAR, price INT, author VARCHAR);
+CREATE TABLE movies (id INT PRIMARY KEY, title VARCHAR, isbn VARCHAR, genre VARCHAR, price INT, author VARCHAR);
 
 
 *INSERT*
@@ -35,12 +35,12 @@ INSERT INTO emp VALUES (4, 'Diana', '2020B-2001b', 'Finance', 21000, 'LA');
 INSERT INTO emp VALUES (5, 'Evan', '3030C-3001a', 'HR', 3500, 'SF');
 INSERT INTO emp VALUES (6, 'Frank', '3030C-3001b', 'HR', 11000, 'NY');
 
-INSERT INTO books VALUES (1, 'The Great Gatsby', '978-0743273565', 'Fiction', 15, 'F. Scott Fitzgerald');
-INSERT INTO books VALUES (2, 'To Kill a Mockingbird', '978-0061120084', 'Fiction', 18, 'Harper Lee');
-INSERT INTO books VALUES (3, '1984', '978-0451524935', 'Dystopian', 12, 'George Orwell');
-INSERT INTO books VALUES (4, 'Designing Data-Intensive Applications', '978-1449373320', 'Technology', 45, 'Martin Kleppmann');
-INSERT INTO books VALUES (5, 'Clean Code', '978-0132350884', 'Technology', 40, 'Robert C. Martin');
-INSERT INTO books VALUES (6, 'Dune', '978-0441172719', 'Sci-Fi', 22, 'Frank Herbert');
+INSERT INTO books VALUES (1, 'The Godfather', '978-0743273565', 'Drama', 15, 'Francis Ford Coppola');
+INSERT INTO books VALUES (2, 'Star Wars 4: A New Hope', '978-0061120084', 'Science Fiction', 18, 'George Lucas');
+INSERT INTO books VALUES (3, 'The Godfather 2', '978-0451524935', 'Drama', 12, 'Francis Ford Coppola');
+INSERT INTO books VALUES (4, 'Dune 2', '978-1449373320', 'Sci-Fi', 45, 'Denis Villeneuve');
+INSERT INTO books VALUES (5, 'Star Wars 6: Return of Jedi', '978-0132350884', 'Science Fiction', 40, 'George Lucas');
+INSERT INTO books VALUES (6, 'Dune', '978-0441172719', 'Sci-Fi', 22, 'Denis Villeneuve');
 
 
 
@@ -127,35 +127,39 @@ DELETE FROM table WHERE a < '';
 
 DELETE FROM table WHERE a = '' OR b = '';
 DELETE FROM table WHERE a = '' AND b = '';
+
+
 DELETE FROM table WHERE (a = '' AND b = '') OR c <= '';
 DELETE FROM table WHERE a > '' AND (b = '' OR c = '');
 
-dbv2.c
-DROP TABLE <name>;
-ALTER TABLE <name> ADD [Column] <col> int|VARCHAR(n);
-ALTER TABLE <name> DROP [Column] <col>;
-ALTER TABLE <name> RENAME TO <new name>;
-ALTER TABLE <name> RENAME COLUMN <old> TO <new>;
-SELECT COUNT(*) FROM <name> WHERE <expr>
+
+DROP/ALTER TABLE
+DROP TABLE table;
+ALTER TABLE table ADD [Column] <col> int|VARCHAR(n);
+ALTER TABLE table DROP [Column] <col>;
+ALTER TABLE table RENAME TO <new name>;
+ALTER TABLE table RENAME COLUMN <old> TO <new>;
 
 dbv3.c
-SELECT * FROM emp ORDER BY salary; --ORDER BY uses ASC by default
-SELECT * FROM emp ORDER BY salary DESC; --ASC/DESC dont work without ORDER BY.
-SELECT * FROM emp ORDER BY name;   -- works on VARCHAR too
+SELECT * FROM table ORDER BY <col>; --ORDER BY uses ASC by default. works on VARCHAR too
+SELECT * FROM table ORDER BY <col> DESC; --ASC/DESC work without ORDER BY, but with ORDER BY is better.
+SELECT * FROM table ORDER BY <col>;  
 
 
-*LIMIT/OFFSET* Composable with ORDER BY, WHERE
-SELECT * FROM emp LIMIT 2; --returns first 2 rows
-SELECT * FROM emp OFFSET 2; --skips first 2 rows and returns next rows
-SELECT * FROM emp ORDER BY id LIMIT 4;
-SELECT * FROM emp ORDER BY id DESC LIMIT 2;
-SELECT * FROM emp ORDER BY id DESC LIMIT 4 OFFSET 2; --skips 1 row returns 2 next rows
+*LIMIT/OFFSET* 
+Composable with ORDER BY, WHERE
+SELECT * FROM table ORDER BY id LIMIT 2; --returns first 2 rows
+SELECT * FROM table ORDER BY id OFFSET 2; --skips first 2 rows and returns next rows
+SELECT * FROM table ORDER BY id DESC LIMIT 2;
+SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2; --skips 1 row returns 2 next rows
 
-SELECT COUNT(*) FROM emp WHERE dept = 'eng';
-SELECT SUM(salary) FROM emp;
-SELECT AVG(salary) FROM emp WHERE dept = 'eng';
-SELECT MIN(salary) FROM emp;
-SELECT MAX(salary) FROM emp WHERE dept = 'sales';
+SELECT COUNT(*) FROM table WHERE <expr>
+SELECT SUM(INT Column) FROM table;
+SELECT AVG(INT Column) FROM table WHERE <expr>
+SELECT MIN(INT Column) FROM table;
+SELECT MAX(INT Column) FROM table WHERE <expr>;
+
+
 
 gcc -Wall -Wextra db.c -o db
 
