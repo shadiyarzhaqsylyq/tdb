@@ -137,6 +137,8 @@ DROP/ALTER TABLE
 DROP TABLE table;
 ALTER TABLE table DROP [Column] <col>;
 ALTER TABLE table ADD [Column] <col> int|VARCHAR(n);
+
+Not supported
 ALTER TABLE table RENAME TO <new name>;
 ALTER TABLE table RENAME COLUMN <old> TO <new>;
 
@@ -163,6 +165,20 @@ SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2;
 
 SELECT COUNT(*) FROM table;
 SELECT COUNT(*) FROM table WHERE <expr>;
+
+
+
+*Howto*
+CREATE TABLE <name> (<col> <type> [PRIMARY KEY], ...);
+DROP TABLE <name>;
+ALTER TABLE <name> ADD [COLUMN] <col> <type> [DEFAULT <value>];
+ALTER TABLE <name> DROP [COLUMN] <col>;
+
+INSERT INTO <name> VALUES (<v1>, <v2>, ...);
+SELECT * FROM <name> [WHERE <expr>] [ORDER BY <col> [ASC|DESC]] [LIMIT <n> [OFFSET <n>]];
+SELECT COUNT(*) FROM <name> [WHERE <expr>];
+UPDATE <name> SET <col> = <val> [, <col2> = <val2> ...] [WHERE <expr>];
+DELETE FROM <name> [WHERE <expr>];
 
 odin build db.odin -file
 gcc -Wall -Wextra db.c -o db
