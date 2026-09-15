@@ -159,12 +159,9 @@ SELECT * FROM table ORDER BY id LIMIT 4 OFFSET 2; --skips first 2 rows returns 4
 SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2;
 
 SELECT COUNT(*) FROM table;
-SELECT COUNT(*) FROM table WHERE <expr>; --SUM,MIN,MAX,AVG support WHERE expression.
-SELECT SUM(INT Column) FROM table;
-SELECT MIN(INT Column) FROM table;
-SELECT MAX(INT Column) FROM table;
-SELECT AVG(INT Column) FROM table;
+SELECT COUNT(*) FROM table WHERE <expr>;
 
+odin build db.odin -file
 gcc -Wall -Wextra db.c -o db
 
 \q - exit,\? - for help
