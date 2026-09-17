@@ -165,7 +165,10 @@ SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2;
 
 SELECT COUNT(*) FROM table;
 SELECT COUNT(*) FROM table WHERE <expr>;
-
+SELECT SUM(salary) FROM table;
+SELECT AVG(salary) FROM table;
+SELECT MIN(salary) FROM table;
+SELECT MAX(salary) FROM table;
 
 
 *Howto*
