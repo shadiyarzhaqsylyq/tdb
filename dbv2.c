@@ -99,12 +99,42 @@ static int strcasecmp_custom(const char* s1, const char* s2) {
 }
 
 static int schema_find_column(const Schema* schema, const char* name) {
+    // Exact match: covers plain column names, and "table.col" qualified
+    // names when the schema's own column names are stored that way (see
+    // build_combined_schema, used for JOIN).
     for (uint32_t i = 0; i < schema->num_columns; ++i) {
         if (strcasecmp_custom(schema->columns[i].name, name) == 0) {
             return (int)i;
         }
     }
-    return -1;
+
+    const char* dot = strrchr(name, '.');
+    if (dot) {
+        // Reference is qualified (e.g. "emp.dept_id") but this schema
+        // stores plain names -- match on the part after the dot.
+        for (uint32_t i = 0; i < schema->num_columns; ++i) {
+            if (strcasecmp_custom(schema->columns[i].name, dot + 1) == 0) {
+                return (int)i;
+            }
+        }
+        return -1;
+    }
+
+    // Reference is unqualified but this schema stores "table.col" names
+    // (a combined JOIN schema) -- match on the suffix. Only succeeds if
+    // exactly one column qualifies; an unqualified name matching columns
+    // from both sides of a join is rejected as ambiguous rather than
+    // guessed at.
+    int found = -1;
+    for (uint32_t i = 0; i < schema->num_columns; ++i) {
+        const char* col_dot = strrchr(schema->columns[i].name, '.');
+        if (!col_dot) continue;
+        if (strcasecmp_custom(col_dot + 1, name) == 0) {
+            if (found >= 0) return -1; // ambiguous
+            found = (int)i;
+        }
+    }
+    return found;
 }
 
 // One entry per table in the database's catalog. Lives at a fixed catalog
@@ -115,6 +145,41 @@ typedef struct TableCatalogEntry {
     Schema schema;
     uint32_t root_page_num;
 } TableCatalogEntry;
+
+// Builds a synthetic schema describing a JOINed row: left's columns
+// followed by right's, each renamed "table.column" so schema_find_column
+// can resolve both qualified references and unambiguous unqualified ones.
+// Byte-layout fields (row_size/offset/primary_key_index) are left at 0 --
+// this schema only ever describes an in-memory joined row, never one
+// that's serialized to disk.
+static void build_combined_schema(Schema* out, const Schema* left, const Schema* right) {
+    // MAX_NAME_LEN*2 is large enough that "%s+%s"/"%s.%s" of two
+    // MAX_NAME_LEN-1-byte names can never be truncated here -- the actual,
+    // possibly-truncating copy into the fixed-size field happens via
+    // strncpy below, which doesn't trip gcc's format-truncation warning.
+    char tmp[MAX_NAME_LEN * 2];
+
+    memset(out, 0, sizeof(Schema));
+    out->has_schema = true;
+
+    snprintf(tmp, sizeof(tmp), "%s+%s", left->table_name, right->table_name);
+    strncpy(out->table_name, tmp, MAX_NAME_LEN - 1);
+
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < left->num_columns && n < MAX_COLUMNS; i++) {
+        out->columns[n] = left->columns[i];
+        snprintf(tmp, sizeof(tmp), "%s.%s", left->table_name, left->columns[i].name);
+        strncpy(out->columns[n].name, tmp, MAX_NAME_LEN - 1);
+        n++;
+    }
+    for (uint32_t i = 0; i < right->num_columns && n < MAX_COLUMNS; i++) {
+        out->columns[n] = right->columns[i];
+        snprintf(tmp, sizeof(tmp), "%s.%s", right->table_name, right->columns[i].name);
+        strncpy(out->columns[n].name, tmp, MAX_NAME_LEN - 1);
+        n++;
+    }
+    out->num_columns = n;
+}
 
 // ============================================================================
 // Dynamic Value & Row Structures
@@ -307,6 +372,18 @@ void free_expr(Expr* expr) {
     free(expr);
 }
 
+// Reverses a comparison operator's direction, e.g. for "a OP b" written as
+// "b OP a" (used when a JOIN's ON clause has its operands swapped).
+static WhereOp flip_op(WhereOp op) {
+    switch (op) {
+        case WHERE_OP_GT: return WHERE_OP_LT;
+        case WHERE_OP_LT: return WHERE_OP_GT;
+        case WHERE_OP_GE: return WHERE_OP_LE;
+        case WHERE_OP_LE: return WHERE_OP_GE;
+        default: return op; // EQ, NEQ are symmetric
+    }
+}
+
 bool evaluate_expr(const Expr* expr, const DynamicRow* row, const Schema* schema) {
     if (!expr) return true;
 
@@ -358,6 +435,13 @@ typedef struct Statement {
 
     Expr* where;
     uint32_t target_id;
+
+    // JOIN (inner join only, one FROM + one JOIN)
+    bool has_join;
+    char join_table_name[MAX_NAME_LEN];
+    char join_left_column[MAX_NAME_LEN];  // unqualified name, in the FROM table
+    char join_right_column[MAX_NAME_LEN]; // unqualified name, in the JOIN table
+    WhereOp join_op;
 
     // SELECT modifiers
     AggregateType agg_type;         // AGG_NONE for a plain SELECT *
@@ -1737,18 +1821,76 @@ PrepareResult prepare_statement(TokenList* list, const Database* db, Statement* 
         Token tbl = advance_token(list);
         strncpy(statement->table_name, tbl.text, MAX_NAME_LEN - 1);
 
-        const TableCatalogEntry* entry = database_find_table(db, tbl.text);
-        if (!entry) return PREPARE_NO_SUCH_TABLE;
+        const TableCatalogEntry* left_entry = database_find_table(db, tbl.text);
+        if (!left_entry) return PREPARE_NO_SUCH_TABLE;
+
+        const Schema* effective_schema = &left_entry->schema;
+        Schema combined_schema; // only populated & used below if a JOIN is present
+
+        match_token(list, "inner"); // optional, ignored -- only inner joins are supported
+        if (match_token(list, "join")) {
+            Token rtbl = advance_token(list);
+            if (rtbl.kind != TOKEN_IDENTIFIER) return PREPARE_SYNTAX_ERROR;
+            const TableCatalogEntry* right_entry = database_find_table(db, rtbl.text);
+            if (!right_entry) {
+                strncpy(statement->table_name, rtbl.text, MAX_NAME_LEN - 1);
+                return PREPARE_NO_SUCH_TABLE;
+            }
+
+            if (!match_token(list, "on")) return PREPARE_SYNTAX_ERROR;
+
+            Token c1 = advance_token(list);
+            Token op_tok = advance_token(list);
+            Token c2 = advance_token(list);
+            if (c1.kind != TOKEN_IDENTIFIER || c2.kind != TOKEN_IDENTIFIER) return PREPARE_SYNTAX_ERROR;
+
+            WhereOp join_op;
+            if (strcmp(op_tok.text, "=") == 0) join_op = WHERE_OP_EQ;
+            else if (strcmp(op_tok.text, "!=") == 0 || strcmp(op_tok.text, "<>") == 0) join_op = WHERE_OP_NEQ;
+            else if (strcmp(op_tok.text, ">=") == 0) join_op = WHERE_OP_GE;
+            else if (strcmp(op_tok.text, "<=") == 0) join_op = WHERE_OP_LE;
+            else if (strcmp(op_tok.text, ">") == 0) join_op = WHERE_OP_GT;
+            else if (strcmp(op_tok.text, "<") == 0) join_op = WHERE_OP_LT;
+            else return PREPARE_SYNTAX_ERROR;
+
+            // ON accepts either "left.col OP right.col" or "right.col OP left.col".
+            int li = schema_find_column(&left_entry->schema, c1.text);
+            int ri = schema_find_column(&right_entry->schema, c2.text);
+            bool swapped = false;
+            if (li < 0 || ri < 0) {
+                int li2 = schema_find_column(&left_entry->schema, c2.text);
+                int ri2 = schema_find_column(&right_entry->schema, c1.text);
+                if (li2 < 0 || ri2 < 0) return PREPARE_SYNTAX_ERROR;
+                li = li2;
+                ri = ri2;
+                swapped = true;
+            }
+            if (left_entry->schema.num_columns + right_entry->schema.num_columns > MAX_COLUMNS) {
+                return PREPARE_SYNTAX_ERROR;
+            }
+            if (left_entry->schema.columns[li].type != right_entry->schema.columns[ri].type) {
+                return PREPARE_SYNTAX_ERROR;
+            }
+
+            statement->has_join = true;
+            strncpy(statement->join_table_name, rtbl.text, MAX_NAME_LEN - 1);
+            strncpy(statement->join_left_column, left_entry->schema.columns[li].name, MAX_NAME_LEN - 1);
+            strncpy(statement->join_right_column, right_entry->schema.columns[ri].name, MAX_NAME_LEN - 1);
+            statement->join_op = swapped ? flip_op(join_op) : join_op;
+
+            build_combined_schema(&combined_schema, &left_entry->schema, &right_entry->schema);
+            effective_schema = &combined_schema;
+        }
 
         if (statement->agg_type == AGG_SUM || statement->agg_type == AGG_AVG ||
             statement->agg_type == AGG_MIN || statement->agg_type == AGG_MAX) {
-            if (schema_find_column(&entry->schema, statement->agg_column) < 0) return PREPARE_SYNTAX_ERROR;
+            if (schema_find_column(effective_schema, statement->agg_column) < 0) return PREPARE_SYNTAX_ERROR;
         }
 
-        PrepareResult where_res = parse_where_clause(list, &entry->schema, statement);
+        PrepareResult where_res = parse_where_clause(list, effective_schema, statement);
         if (where_res != PREPARE_SUCCESS) return where_res;
 
-        return parse_select_modifiers(list, &entry->schema, statement);
+        return parse_select_modifiers(list, effective_schema, statement);
     }
 
     // UPDATE <table> SET col1 = val1 [, col2 = val2] [WHERE <expr>]
@@ -2032,6 +2174,34 @@ static void print_aggregate(const Statement* statement, const DynamicRow* rows, 
     }
 }
 
+// Shared tail end of SELECT execution: aggregate reduction, or ORDER BY +
+// LIMIT/OFFSET + printing. Used by both a plain SELECT and a JOINed one --
+// `schema` describes whatever `rows` actually contains (a single table's
+// row layout, or a combined JOIN row layout).
+static ExecuteResult finish_select(Statement* statement, DynamicRow* rows, uint32_t count, const Schema* schema) {
+    if (statement->agg_type != AGG_NONE) {
+        print_aggregate(statement, rows, count, schema);
+        return EXECUTE_SUCCESS;
+    }
+
+    if (statement->has_order_by) {
+        int col_idx = schema_find_column(schema, statement->order_by_column);
+        if (col_idx >= 0) {
+            sort_rows(rows, count, (uint32_t)col_idx, schema->columns[col_idx].type, statement->order_by_desc);
+        }
+    }
+
+    uint32_t start = statement->has_offset ? statement->offset_count : 0;
+    if (start > count) start = count;
+    uint64_t end64 = statement->has_limit ? (uint64_t)start + (uint64_t)statement->limit_count : (uint64_t)count;
+    uint32_t end = (end64 > count) ? count : (uint32_t)end64;
+
+    for (uint32_t i = start; i < end; i++) {
+        print_row(&rows[i], schema);
+    }
+    return EXECUTE_SUCCESS;
+}
+
 ExecuteResult execute_select(Statement* statement, Table* table) {
     Cursor* cursor = table_start(table);
     DynamicRow row;
@@ -2055,30 +2225,105 @@ ExecuteResult execute_select(Statement* statement, Table* table) {
     }
     free(cursor);
 
-    if (statement->agg_type != AGG_NONE) {
-        print_aggregate(statement, rows, count, &table->schema);
-        free(rows);
-        return EXECUTE_SUCCESS;
-    }
-
-    if (statement->has_order_by) {
-        int col_idx = schema_find_column(&table->schema, statement->order_by_column);
-        if (col_idx >= 0) {
-            sort_rows(rows, count, (uint32_t)col_idx, table->schema.columns[col_idx].type, statement->order_by_desc);
-        }
-    }
-
-    uint32_t start = statement->has_offset ? statement->offset_count : 0;
-    if (start > count) start = count;
-    uint64_t end64 = statement->has_limit ? (uint64_t)start + (uint64_t)statement->limit_count : (uint64_t)count;
-    uint32_t end = (end64 > count) ? count : (uint32_t)end64;
-
-    for (uint32_t i = start; i < end; i++) {
-        print_row(&rows[i], &table->schema);
-    }
-
+    ExecuteResult result = finish_select(statement, rows, count, &table->schema);
     free(rows);
-    return EXECUTE_SUCCESS;
+    return result;
+}
+
+// Compares one value from the left row against one from the right row for
+// a JOIN's ON condition. Both sides must already be the same DataType
+// (enforced at parse time).
+static bool join_values_match(const Value* a, const Value* b, DataType type, WhereOp op) {
+    int cmp;
+    if (type == DATA_TYPE_INT) {
+        cmp = (a->int_val > b->int_val) - (a->int_val < b->int_val);
+    } else {
+        int c = strcmp(a->str_val, b->str_val);
+        cmp = (c > 0) - (c < 0);
+    }
+    switch (op) {
+        case WHERE_OP_EQ:  return cmp == 0;
+        case WHERE_OP_NEQ: return cmp != 0;
+        case WHERE_OP_GT:  return cmp > 0;
+        case WHERE_OP_LT:  return cmp < 0;
+        case WHERE_OP_GE:  return cmp >= 0;
+        case WHERE_OP_LE:  return cmp <= 0;
+    }
+    return false;
+}
+
+// Inner-joins `left` and `right` with a simple nested loop (the right
+// table is buffered once, then scanned per left row). WHERE, ORDER BY,
+// LIMIT/OFFSET, and aggregates all then apply to the joined result set,
+// via the combined schema built by build_combined_schema.
+ExecuteResult execute_select_join(Statement* statement, Table* left, Table* right) {
+    if (left->schema.num_columns + right->schema.num_columns > MAX_COLUMNS) {
+        printf("Error: joined tables have too many combined columns (max %d).\n", MAX_COLUMNS);
+        return EXECUTE_TOO_MANY_COLUMNS;
+    }
+
+    int left_col_idx = schema_find_column(&left->schema, statement->join_left_column);
+    int right_col_idx = schema_find_column(&right->schema, statement->join_right_column);
+    if (left_col_idx < 0 || right_col_idx < 0) {
+        printf("Error: join column not found.\n");
+        return EXECUTE_COLUMN_NOT_FOUND;
+    }
+    DataType join_type = left->schema.columns[left_col_idx].type;
+
+    Schema combined;
+    build_combined_schema(&combined, &left->schema, &right->schema);
+
+    // Buffer the right table's rows once so the nested loop below doesn't
+    // re-walk its B+tree for every left row.
+    uint32_t right_cap = 64, right_count = 0;
+    DynamicRow* right_rows = (DynamicRow*)malloc(right_cap * sizeof(DynamicRow));
+    Cursor* rc = table_start(right);
+    DynamicRow rrow;
+    while (!rc->end_of_table) {
+        deserialize_row(cursor_value(rc), &rrow, &right->schema);
+        if (right_count == right_cap) {
+            right_cap *= 2;
+            right_rows = (DynamicRow*)realloc(right_rows, right_cap * sizeof(DynamicRow));
+        }
+        right_rows[right_count++] = rrow;
+        cursor_advance(rc);
+    }
+    free(rc);
+
+    uint32_t cap = 64, count = 0;
+    DynamicRow* rows = (DynamicRow*)malloc(cap * sizeof(DynamicRow));
+
+    Cursor* lc = table_start(left);
+    DynamicRow lrow;
+    while (!lc->end_of_table) {
+        deserialize_row(cursor_value(lc), &lrow, &left->schema);
+        for (uint32_t j = 0; j < right_count; j++) {
+            if (!join_values_match(&lrow.values[left_col_idx], &right_rows[j].values[right_col_idx], join_type, statement->join_op)) {
+                continue;
+            }
+
+            DynamicRow combined_row;
+            uint32_t w = 0;
+            for (uint32_t k = 0; k < lrow.num_values && w < MAX_COLUMNS; k++) combined_row.values[w++] = lrow.values[k];
+            for (uint32_t k = 0; k < right_rows[j].num_values && w < MAX_COLUMNS; k++) combined_row.values[w++] = right_rows[j].values[k];
+            combined_row.num_values = w;
+
+            if (!row_matches_where(&combined_row, statement, &combined)) continue;
+
+            if (count == cap) {
+                cap *= 2;
+                rows = (DynamicRow*)realloc(rows, cap * sizeof(DynamicRow));
+            }
+            rows[count++] = combined_row;
+        }
+        cursor_advance(lc);
+    }
+    free(lc);
+    free(right_rows);
+
+    ExecuteResult result = finish_select(statement, rows, count, &combined);
+    free(rows);
+    return result;
 }
 
 ExecuteResult execute_begin(Database* db) {
@@ -2375,7 +2620,17 @@ ExecuteResult execute_statement(Statement* statement, Database* db) {
             Table view = { .pager = db->pager, .root_page_num = entry->root_page_num, .schema = entry->schema, .db = db };
             switch (statement->type) {
                 case STATEMENT_INSERT: return execute_insert(statement, &view);
-                case STATEMENT_SELECT: return execute_select(statement, &view);
+                case STATEMENT_SELECT: {
+                    if (!statement->has_join) return execute_select(statement, &view);
+
+                    const TableCatalogEntry* right_entry = database_find_table(db, statement->join_table_name);
+                    if (!right_entry) {
+                        printf("Error: no such table '%s'.\n", statement->join_table_name);
+                        return EXECUTE_TABLE_NOT_FOUND;
+                    }
+                    Table right_view = { .pager = db->pager, .root_page_num = right_entry->root_page_num, .schema = right_entry->schema, .db = db };
+                    return execute_select_join(statement, &view, &right_view);
+                }
                 case STATEMENT_UPDATE: return execute_update(statement, &view);
                 case STATEMENT_DELETE: return execute_delete(statement, &view);
                 default: return EXECUTE_SUCCESS;
@@ -2398,8 +2653,8 @@ void print_help(void) {
            "  ALTER TABLE <name> RENAME TO <new_name>;\n"
            "  ALTER TABLE <name> RENAME COLUMN <old> TO <new>;\n"
            "  INSERT INTO <name> VALUES (<val1>, '<val2>', ...);\n"
-           "  SELECT * FROM <name> [WHERE <expr>] [ORDER BY <col> [ASC|DESC]] [LIMIT n] [OFFSET n];\n"
-           "  SELECT COUNT(*)|SUM(col)|AVG(col)|MIN(col)|MAX(col) FROM <name> [WHERE <expr>];\n"
+           "  SELECT * FROM <name> [JOIN <other> ON <col> = <col>] [WHERE <expr>] [ORDER BY <col> [ASC|DESC]] [LIMIT n] [OFFSET n];\n"
+           "  SELECT COUNT(*)|SUM(col)|AVG(col)|MIN(col)|MAX(col) FROM <name> [JOIN ...] [WHERE <expr>];\n"
            "  UPDATE <name> SET <col> = <val> WHERE <expr>;\n"
            "  DELETE FROM <name> WHERE <expr>;\n"
            "  (WHERE supports =, !=, <>, <, >, <=, >=, AND, OR, and parentheses ())\n"
