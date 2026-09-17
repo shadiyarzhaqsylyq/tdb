@@ -156,9 +156,8 @@ SELECT * FROM table ORDER BY id ASC; --return rows in Ascending order. ORDER BY 
 SELECT * FROM table LIMIT 2; --returns first 2 rows
 SELECT * FROM table ORDER BY id LIMIT 2; --returns first 2 rows
 
-Not supported
+SELECT * FROM table OFFSET 2;
 SELECT * FROM table ORDER BY id OFFSET 2; --skips first 2 rows and returns next rows
-
 SELECT * FROM table ORDER BY id DESC LIMIT 2;
 SELECT * FROM table ORDER BY id LIMIT 4 OFFSET 2; --skips first 2 rows returns 4 next rows
 SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2;
