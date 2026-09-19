@@ -23,11 +23,17 @@ Operators - >=, <=, =, <, >, !=, <>
 != and <> have the same meaning "not equal to".
 ```
 *CREATE*
+CREATE TABLE table (a INT PRIMARY KEY, b VARCHAR, c VARCHAR, d VARCHAR, f INT, g VARCHAR);
+
+### Examples for CREATE
 CREATE TABLE emp (id INT PRIMARY KEY, name VARCHAR, did VARCHAR, dep VARCHAR, salary INT, city VARCHAR);
 CREATE TABLE movies (id INT PRIMARY KEY, title VARCHAR, isbn VARCHAR, genre VARCHAR, price INT, author VARCHAR);
 
 
 *INSERT*
+INSERT INTO table VALUES (PK num, 'char', 'char', 'char', int num, 'char');
+
+### Examples for INSERT
 INSERT INTO emp VALUES (1, 'Alice', '1010A-1001a', 'Engineering', 12000, 'NY');
 INSERT INTO emp VALUES (2, 'Bob', '1010A-1001b', 'IT', 18500, 'LA');
 INSERT INTO emp VALUES (3, 'Charlie', '2020B-2001a', 'HR', 4000, 'SF');
@@ -162,12 +168,13 @@ SELECT * FROM table ORDER BY id DESC LIMIT 4 OFFSET 2;
 
 SELECT COUNT(*) FROM table;
 SELECT COUNT(*) FROM table WHERE <expr>;
-SELECT SUM(salary) FROM table;
-SELECT AVG(salary) FROM table;
-SELECT MIN(salary) FROM table;
-SELECT MAX(salary) FROM table;
+SELECT SUM(col) FROM table;
+SELECT AVG(col) FROM table;
+SELECT MIN(col) FROM table;
+SELECT MAX(col) FROM table;
 
 
+*JOIN*
 CREATE TABLE dept (id INT PRIMARY KEY, name VARCHAR(32));
 INSERT INTO dept VALUES (101, 'IT');
 INSERT INTO dept VALUES (102, 'Eng');
